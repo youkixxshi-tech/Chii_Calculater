@@ -1,0 +1,78 @@
+import re
+import os
+from flask import Flask
+from threading import Thread
+from simpleeval import simple_eval
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, MessageHandler, filters, ContextTypes, CallbackQueryHandler
+
+# Render 24/7 အတွက် Flask
+app_web = Flask('')
+
+@app_web.route('/')
+def home():
+    return "Cute Calc Bot is Online! 💕"
+
+def run_web():
+    port = int(os.environ.get("PORT", 8080))
+    app_web.run(host='0.0.0.0', port=port)
+
+# --- YOUR BOT TOKEN ---
+TOKEN = "8791977854:AAFJk2nh9QZOAygeQcQqH2ojse2FtCLcd2g"
+
+def clean_and_calculate(expression):
+    # သင်္ချာအမှတ်အသားများကို Python format သို့ ပြောင်းခြင်း
+    cleaned = expression.replace('×', '*').replace('÷', '/')
+    try:
+        return simple_eval(cleaned)
+    except:
+        return None
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
+
+    user_text = update.message.text
+    
+    # သင်္ချာပုစ္ဆာ ရှာဖွေခြင်း (ဥပမာ- 500x2)
+    math_patterns = re.findall(r'[0-9+\-*/×÷.\s]{3,}', user_text)
+    calc_results = []
+    
+    for item in math_patterns:
+        item = item.strip()
+        if any(op in item for op in "+-*/×÷"):
+            res = clean_and_calculate(item)
+            if res is not None:
+                if isinstance(res, float): res = round(res, 2)
+                calc_results.append(f"✨ {item} = **{res}**")
+
+    # Calculator အဖြေရှိမှသာ စာပို့မယ်
+    if calc_results:
+        response_text = "🎀 **Calculator Result** 🎀\n\n"
+        response_text += "\n".join(calc_results)
+        response_text += "\n\n💕 Have a sweet day, Sis! ✨"
+
+        # Delete Button လေးပဲ ထည့်ပေးထားမယ် (အမြင်ရှင်းအောင်)
+        keyboard = [[InlineKeyboardButton("🗑 Delete", callback_data="delete_msg")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            response_text, 
+            parse_mode='Markdown', 
+            reply_markup=reply_markup
+        )
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.data == "delete_msg":
+        await query.message.delete()
+
+if __name__ == "__main__":
+    Thread(target=run_web).start()
+    
+    print("Cute Calculator Bot Starting...")
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.run_polling()
